@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1016"><title>Tapescope · Order flow terminal</title>
+<link rel="stylesheet" href="terminal.css">
+</head>
+<body>
+<header class="mast"><div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Tapescope</div>
+<div class="nav"><a href="#terminal" class="selected">Terminal</a><a href="/swing.html">Swing</a><button id="tools">Research tools</button></div>
+<div class="mast-end"><span class="paper-dot"></span> Paper workspace <button class="icon" id="settings" aria-label="Configure terminal" title="Configure terminal">⚙</button></div></header>
+<main id="terminal">
+<div class="page-title"><div><h1>Order flow terminal</h1></div>
+<div class="actions"><label class="picker">Market
+<select id="marketPicker" aria-label="Select order flow market"><option value="BTCUSDT">BTCUSDT · Binance</option><option value="ETHUSDT">ETHUSDT · Binance</option><option value="SOLUSDT">SOLUSDT · Binance</option><option value="NVDA">NVDA · Moomoo</option><option value="AMD">AMD · Moomoo</option><option value="INTC">INTC · Moomoo</option><option value="GLD">GLD · SPDR Gold Shares · Moomoo</option></select></label><button id="sourceBtn">Session files <span>⌄</span></button><button class="primary" id="connect">Connect live <span>↗</span></button></div></div>
+<div id="notice" role="status" hidden></div>
+<section class="metrics" aria-label="Session statistics">
+<div class="metric"><label>Instrument</label><strong id="marketName">BTCUSDT</strong><small id="sourceName"></small></div>
+<div class="metric"><label>Last price</label><strong id="lastPrice">—</strong><small id="priceChange">Session change</small></div>
+<div class="metric"><label>Cumulative delta</label><strong id="delta">—</strong><small>Buy minus sell volume</small></div>
+<div class="metric"><label>Session volume</label><strong id="volume">—</strong><small id="volumeNote">Traded quantity</small></div>
+<div class="metric"><label>VWAP</label><strong id="vwap">—</strong><small>Volume-weighted price</small></div>
+</section>
+<section id="marketQuotes" aria-label="Market reference prices" hidden>
+<div id="marketRef"><strong id="refCaption">Reference price</strong> <span id="refValue"></span><small id="refTime"></small></div>
+<div id="spotRef" hidden><strong>XAU/USD spot</strong> <span id="spotValue">—</span><small id="spotTime"></small></div></section>
+<section id="liveReadout" aria-label="Live feed and order flow" hidden>
+<div><strong>Trades</strong> <span id="tradeHealth">Connecting</span></div>
+<div><strong>Depth</strong> <span id="depthHealth">Connecting</span></div>
+<div><strong>Last 60s</strong> <span id="minuteFlow">Waiting for trades</span></div>
+</section>
+<div class="desk">
+<section class="panel chart-panel">
+<div class="panel-head"><div class="heading"><span class="chart-mark" aria-hidden="true">▥</span><h2>Order flow chart</h2></div><span class="pill" id="modeBadge">Connecting</span></div>
+<div class="chart-toolbar"><div class="tabs" aria-label="Chart view"><button data-view="heat" aria-pressed="true">Heatmap</button><button data-view="foot" aria-pressed="false">Footprint</button><button data-view="tpo" aria-pressed="false">TPO profile</button></div>
+<select id="timeframe" aria-label="Bar interval">
+<option value="15000">15 sec</option><option value="60000" selected>1 min</option><option value="300000">5 min</option>
+<option value="900000">15 min</option><option value="1800000">30 min</option><option value="3600000">1 hour</option>
+</select></div>
+<div class="plot"><canvas id="chart" aria-label="Order flow price and volume chart"></canvas><div id="hover" hidden></div></div>
+<div class="legend" id="legend"></div>
+<div class="transport"><button id="play" aria-label="Play replay" title="Play replay">▶</button><button id="restart" aria-label="Restart replay" title="Restart replay">↺</button>
+<span id="replayTime"></span><input id="scrub" type="range" min="0" max="1000" aria-label="Replay position">
+<select id="speed" aria-label="Replay speed"><option value="1">1×</option><option value="5">5×</option><option value="20" selected>20×</option><option value="100">100×</option></select></div>
+</section>
+<section class="panel scanner"><div class="panel-head"><div class="heading"><span class="radar"></span><h2>Setup scanner</h2></div><span class="count" id="signalCount">0</span></div>
+<div class="subline">Detected setups <span>TIME · UTC</span></div><div id="signals" class="scroll-list"></div></section>
+<section class="panel tape"><div class="panel-head"><div class="tabs wide"><button data-list="prints" aria-pressed="true">Large trades</button><button data-list="liqs" aria-pressed="false">Liquidations</button><button data-list="paper" aria-pressed="false">Paper trades</button></div><span class="count" id="tapeCount">0</span></div>
+<div class="table-scroll"><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div></section>
+<section class="panel book"><div class="panel-head"><div class="heading"><span class="book-mark">≋</span><h2>Order book</h2></div><span class="count">L2</span></div>
+<div class="subline">Bid / ask depth <span id="bookTime">UTC</span></div><div id="bookRows"></div></section></div>
+<footer><span><i></i><span id="footerSource">Connecting</span></span><span id="sessionDate"></span></footer>
+</main>
+<dialog id="filesDialog"><div class="dialog-head"><h2>Session files</h2><button class="close" aria-label="Close session files">×</button></div><div class="dialog-body"><label>Import a recording or tick CSV<input type="file" id="import" accept=".csv,.json"></label><p>Recordings include trades, depth snapshots and liquidations. CSV files contain trades only.</p><button id="exportSession">Save session JSON</button><button id="previousSession" hidden>Save previous live segment</button><button id="exportCSV">Export ticks for Python</button><button id="demo">Open demo replay</button></div></dialog>
+<dialog id="settingsDialog"><div class="dialog-head"><h2>Terminal settings</h2><button class="close" aria-label="Close settings">×</button></div><form id="config" class="dialog-body">
+<label>Live symbol<input id="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{3,20}" required></label>
+<div class="two"><label><span>Large trade (<span class="currencyUnit">USDT</span>)</span><input id="large" type="number" min="1" value="100000" required></label><label>Price row size<input id="bucket" type="number" step="any" min="0.000000000001" placeholder="Auto"></label></div>
+<fieldset><legend>Setup alerts</legend><label>Phone topic (ntfy.sh)<input id="topic" pattern="[A-Za-z0-9_-]{1,64}" placeholder="Your subscribed topic"></label><label class="check"><input id="notify" type="checkbox">Desktop notifications</label></fieldset>
+<fieldset><legend>Paper strategy</legend><label class="check"><input type="checkbox" id="botOn">Simulate entries on selected setups</label>
+<div class="checks" id="botTypes"></div><div class="three"><label><span>Size (<span class="currencyUnit">USDT</span>)</span><input id="size" type="number" min="1" value="1000" required></label><label>Stop (%)<input id="stop" type="number" min="0.01" max="99" step="any" value="0.2" required></label><label>Target (%)<input id="target" type="number" min="0.01" max="99" step="any" value="0.4" required></label></div>
+<label>Fee per side (%)<input id="fee" type="number" min="0" max="5" step="any" value="0.05" required></label></fieldset>
+<small>Applying settings recalculates the session through the current cursor.</small><button class="primary">Apply settings</button></form></dialog>
+<dialog id="toolsDialog"><div class="dialog-head"><h2>Research tools</h2><button class="close" aria-label="Close research tools">×</button></div><div class="dialog-body"><h3>Python tick analysis</h3><p>Export ticks from Session files and run the report to inspect footprint bubbles, volume and time at price.</p><a href="README.md#:~:text=%23%23%20Python%20research" target="_blank">Open Python instructions ↗</a><a href="research/orderflow_report.py" download>Download report script ↓</a><a href="research/report.html" download>Download its HTML template ↓</a><h3>NinjaTrader 8</h3><p>Set up a volumetric chart and apply the strategy with your own ATM stop and target.</p><a href="README.md#:~:text=%23%23%20NinjaTrader%208" target="_blank">Open NinjaTrader setup ↗</a><a href="ninjatrader/Strategies/OrderFlowSetupAtm.cs" download>Download NinjaScript strategy ↓</a></div></dialog>
+<script src="engine.js"></script><script src="session.js"></script><script src="chart.js"></script><script src="live-feed.js"></script><script src="markets.js"></script><script src="spot-feed.js"></script><script src="terminal.js"></script>
+</body></html>

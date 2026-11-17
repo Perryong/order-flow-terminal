@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1016">
+<title>Swing trading · Tapescope</title>
+<link rel="stylesheet" href="/terminal.css">
+<link rel="stylesheet" href="/swing.css">
+<script src="/swing-view.js" defer></script>
+</head>
+<body>
+<header class="mast">
+  <div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Tapescope</div>
+  <nav class="nav" aria-label="Views"><a href="/">Terminal</a><a href="/swing.html" class="selected" aria-current="page">Swing trading</a></nav>
+  <span class="mast-end">Alerts only</span>
+</header>
+<main class="swing-main">
+  <div class="swing-title"><div><h1>Swing trading</h1><p>Binance USDⓈ-M perpetual futures</p></div><span id="watcherStatus" class="feed-state" role="status">Connecting to watcher</span></div>
+  <div class="swing-markets" role="group" aria-label="Select a market">
+    <button type="button" data-symbol="BTCUSDT" aria-pressed="true">BTCUSDT <span></span></button>
+    <button type="button" data-symbol="ETHUSDT" aria-pressed="false">ETHUSDT <span></span></button>
+    <button type="button" data-symbol="SOLUSDT" aria-pressed="false">SOLUSDT <span></span></button>
+  </div>
+  <div class="swing-layout">
+    <section class="panel daily-panel" aria-labelledby="dailyHeading">
+      <div class="swing-panel-head"><h2 id="dailyHeading">BTCUSDT daily chart</h2><span id="trend" class="trend">Awaiting candles</span></div>
+      <div class="daily-price"><div><div class="swing-label">Last trade · USDT</div><strong id="lastPrice">—</strong></div><span id="lastTradeTime"></span></div>
+      <div class="daily-plot"><canvas id="dailyChart" role="img" aria-label="Daily candlesticks and key levels"></canvas><span id="chartEmpty">Waiting for daily candles</span></div>
+      <div class="daily-meta"><span id="dailyTime">Daily close unavailable</span><a id="terminalLink" href="/?market=BTCUSDT">Open order flow ↗</a></div>
+    </section>
+    <section class="panel swing-levels" aria-labelledby="levelsHeading">
+      <div class="swing-panel-head"><h2 id="levelsHeading">Daily levels</h2><span class="unit">USDT</span></div>
+      <dl class="levels">
+        <div><dt><span class="swatch support"></span>Support</dt><dd id="support">—</dd></div>
+        <div><dt><span class="swatch resistance"></span>Resistance</dt><dd id="resistance">—</dd></div>
+        <div><dt>Confirmation distance</dt><dd id="tolerance">—</dd></div>
+        <div class="rule"><dt>Last daily close</dt><dd id="dailyClose">—</dd></div>
+        <div><dt>20-day average</dt><dd id="sma20">—</dd></div>
+        <div><dt>50-day average</dt><dd id="sma50">—</dd></div>
+      </dl>
+      <p class="level-note" id="dailyStatus">Waiting for the last completed UTC session.</p>
+    </section>
+  </div>
+  <section class="panel confirmation-panel" aria-labelledby="confirmationHeading">
+    <div class="swing-panel-head"><h2 id="confirmationHeading">Swing confirmation</h2><span id="flowStatus">Checking order flow</span></div>
+    <div class="confirmation-body"><div><span class="swing-label">Current watch</span><p id="watchCondition">Waiting for daily context and live order flow.</p></div>
+      <div><span class="swing-label">Last confirmed setup</span><p id="lastConfirmation">Awaiting watcher</p><small id="confirmationDetails"></small></div></div>
+  </section>
+</main>
+</body>
+</html>

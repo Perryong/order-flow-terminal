@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Order flow · __SOURCE_NAME__</title>
+<style>
+:root{color-scheme:dark;--bg:#10171c;--panel:#192228;--line:#324148;--ink:#e1e9ec;--muted:#abc0c7;--bid:#ee9d8e;--ask:#7ddac3}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}main{max-width:1510px;margin:auto;padding:24px clamp(14px,3vw,48px) 48px}
+h1,h2,p{margin:0}h1{font-size:clamp(26px,4vw,42px);letter-spacing:-.04em}h2{font-size:22px;letter-spacing:-.025em}p,.page{color:var(--muted)}section{margin-top:30px}
+.controls,.summary,.pager{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.summary{margin-top:10px}.summary span{border-right:1px solid var(--line);padding-right:14px}.summary span:last-child{border:0}.controls{justify-content:space-between;margin-bottom:8px}.pager{gap:6px}
+button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:5px;padding:5px 10px;cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.frame{overflow:auto;max-height:620px;border:1px solid var(--line);border-radius:6px;margin-top:10px}
+table{border-collapse:separate;border-spacing:0;width:100%;font:13px/1.4 ui-monospace,monospace;font-variant-numeric:tabular-nums}td,th{padding:6px 9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th{background:var(--panel);color:var(--ink)}thead th{position:sticky;top:0;z-index:2}th:first-child{position:sticky;left:0;z-index:1}thead th:first-child{z-index:3}#foot td{text-align:center;height:60px;position:relative;min-width:108px}#foot th:first-child{min-width:80px}#foot td>span{position:relative}#foot .missing{color:var(--muted)}
+.dot{position:absolute;inset:0;margin:auto;background:var(--ask);opacity:.22;border-radius:50%}.cell-delta{display:block;font-size:11px;color:var(--muted)}.bid{color:var(--bid)}.ask{color:var(--ask)}.page{font-size:13px}.stack{min-width:120px}.track{display:flex;width:100%;height:9px}.track i{background:var(--bid)}.track b{background:var(--ask)}.track em{background:var(--muted)}.periods{text-align:left;white-space:normal;min-width:150px}.letter{display:inline-block;font-size:12px;padding:0 3px;color:#bad6ef}
+</style>
+<main>
+<h1>Order flow report</h1>
+<p>__SOURCE_NAME__</p><div id="summary" class="summary"></div>
+<section><div class="controls"><h2>Footprint</h2><div id="footNav" class="pager"></div></div>
+<p><span class="bid">Bid</span> × <span class="ask">ask</span> in traded quantity. Bubble area scales with cell volume across the visible bars. Delta is ask minus bid. Unclassified quantity contributes to bubble size and volume.</p>
+<div class="frame"><table id="foot" aria-label="Footprint by price and time"></table></div></section>
+<section><div class="controls"><h2>Volume &amp; time-price profile</h2><div id="profileNav" class="pager"></div></div>
+<p>Full-file volume by price. Each letter marks a UTC half hour with an observed trade at that level. Hover or focus a letter for its date and time.</p>
+<div class="frame"><table id="profile" aria-label="Volume and TPO profile"></table></div></section>
+</main>
+<script>
+const report = __REPORT_DATA__;
+const el = id => document.getElementById(id);
+const fmtTime = ms => new Date(ms).toISOString().slice(0,16).replace('T',' ');
+const signed = v => Number(v)>0 ? '+'+v : String(v);
+const tone = v => Number(v)>0 ? 'ask' : Number(v)<0 ? 'bid' : '';
+const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+function pagination(id, size, total, draw, initial=0) {
+  let start=initial;
+  const nav=el(id), back=document.createElement('button'), next=document.createElement('button'), label=document.createElement('span');
+  back.textContent='Previous'; next.textContent='Next'; label.className='page';
+  const subject = id==='footNav' ? 'bars' : 'levels';
+  nav.append(back,label,next);
+  function update(){
+    label.textContent=(start+1)+'–'+Math.min(start+size,total)+' of '+total+' '+subject;
+    back.disabled=start===0;next.disabled=start+size>=total;
+    draw(start,start+size);
+  }
+  back.onclick=()=>{start-=size;update()};next.onclick=()=>{start+=size;update()};update();
+}
+function drawFoot(start,end){
+  const bars=report.bars.slice(start,end), rows=new Map();
+  let peak=0;
+  bars.forEach(([time,cells],column)=>cells.forEach(([level,bid,ask,delta,unknown=0])=>{
+    if(!rows.has(level))rows.set(level,new Map());
+    rows.get(level).set(column,[bid,ask,delta,unknown]);
+    peak=Math.max(peak,Number(bid)+Number(ask)+Number(unknown));
+  }));
+  const headers=bars.map(([time])=>'<th scope="col">'+fmtTime(time).replace(' ','<br>')+'</th>').join('');
+  const body=[];
+  for(const level of Array.from(rows.keys()).sort((a,b)=>a-b)){
+    const values=rows.get(level);
+    let row='<tr><th scope="row">'+report.levels[level][0]+'</th>';
+    for(let i=0;i<bars.length;i++){
+      if(!values.has(i)){row+='<td class="missing">·</td>';continue}
+      const [bid,ask,delta,unknown]=values.get(i);
+      const diameter=54*Math.sqrt((Number(bid)+Number(ask)+Number(unknown))/peak);
+      const color=Number(delta)===0?'#b2bec7':delta>0?'var(--ask)':'var(--bid)';
+      row+='<td><i aria-hidden="true" class="dot" style="width:'+diameter+'px;height:'+diameter+'px;background:'+color+'"></i><span><span class="bid">'+bid+'</span> × <span class="ask">'+ask+'</span><small class="cell-delta">Δ '+signed(delta)+(Number(unknown)?' · ? '+unknown:'')+'</small></span></td>';
+    }
+    body.push(row+'</tr>');
+  }
+  const deltas=bars.map(b=>'<th class="'+tone(b[2])+'">'+signed(b[2])+'</th>').join('');
+  el('foot').innerHTML='<thead><tr><th scope="col">Price / UTC</th>'+headers+'</tr></thead><tbody>'+body.join('')+'</tbody><tfoot><tr><th scope="row">Bar delta</th>'+deltas+'</tr></tfoot>';
+}
+const maxVolume=report.levels.reduce((max,row)=>Math.max(max,Number(row[3])),0);
+function drawProfile(start,end){
+  let body='';
+  for(const [price,bid,ask,volume,delta,periods,unknown=0] of report.levels.slice(start,end)){
+    const letters=periods.map(time=>{
+      const dt=fmtTime(time)+' UTC', slot=Math.floor((time%86400000)/1800000);
+      return '<abbr class="letter" tabindex="0" aria-label="'+dt+'" title="'+dt+'">'+alphabet[slot]+'</abbr>';
+    }).join('');
+    body+='<tr><th scope="row">'+price+'</th><td class="stack"><span class="track"><i style="width:'+100*Number(bid)/maxVolume+'%"></i><b style="width:'+100*Number(ask)/maxVolume+ '%"></b><em style="width:'+100*Number(unknown)/maxVolume+'%"></em></span></td><td class="bid">'+bid+'</td><td class="ask">'+ask+'</td><td>'+unknown+'</td><td>'+volume+'</td><td class="'+tone(delta)+'">'+signed(delta)+'</td><td>'+periods.length+'</td><td class="periods">'+letters+'</td></tr>';
+  }
+  el('profile').innerHTML='<thead><tr>'+['Price','Relative volume','Bid','Ask','Unclassified','Volume','Delta','TPO count','Half hours'].map(s=>'<th scope="col">'+s+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody>';
+}
+el('summary').innerHTML=[report.count.toLocaleString()+' ticks',report.minutes+' min bars','Row size '+report.bucket,'Volume '+report.volume,'Unclassified '+report.unknown,'Delta '+signed(report.delta)].map(s=>'<span>'+s+'</span>').join('');
+pagination('footNav',12,report.bars.length,drawFoot,12*Math.floor((report.bars.length-1)/12));
+pagination('profileNav',60,report.levels.length,drawProfile);
+</script>
+</html>

@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "orderflow", "runtimeExecutable": ".venv/bin/python", "runtimeArgs": ["server.py", "--port", "8791"], "port": 8791 }
+  ]
+}
