@@ -91,7 +91,7 @@ function render() {
     problem ? 'Watcher unavailable' : watcherFresh ? 'Watcher online' : 'Watcher data stale';
   $('watcherStatus').classList.toggle('healthy', watcherFresh);
   $('dailyHeading').textContent = symbol + ' daily chart';
-  $('terminalLink').href = '/?market=' + symbol;
+  $('terminalLink').href = './?market=' + symbol;
   $('trend').textContent = daily ? (labels[daily.trend] || 'Unavailable') + (contextFresh ? '' : ' · stale') : 'Awaiting candles';
   tone($('trend'), contextFresh ? daily.trend : '');
   $('lastPrice').textContent = price(row?.price);
@@ -120,7 +120,7 @@ function render() {
 
 async function refresh() {
   try {
-    const response = await fetch('/api/swing', {cache: 'no-store', signal: AbortSignal.timeout(6000)});
+    const response = await fetch(TapescopeBackend.url('/api/swing'), {cache: 'no-store', signal: AbortSignal.timeout(6000)});
     if (!response.ok) throw Error('Watcher unavailable');
     const next = await response.json();
     if (!Number.isFinite(next.checked) || !next.swing) throw Error('Waiting for swing data');

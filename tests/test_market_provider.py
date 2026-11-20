@@ -148,7 +148,7 @@ class HTTPTest(unittest.TestCase):
         self.server.server_close()
 
     def get(self, path, headers=None):
-        conn = http.client.HTTPConnection(*self.server.server_address, timeout=4)
+        conn = http.client.HTTPConnection(*self.server.socket.getsockname(), timeout=4)
         try:
             conn.request('GET', path, headers=headers or {})
             response = conn.getresponse()
@@ -179,3 +179,47 @@ class HTTPTest(unittest.TestCase):
             spot.side_effect = RuntimeError('unavailable')
             self.assertEqual(self.get('/api/reference?symbol=GLD')[0], 502)
             self.assertEqual(self.get('/api/spot')[0], 503)
+
+
+    def test_explicit_lan_address_keeps_host_and_origin_checks(self):
+        port = self.server.server_port
+        address = f'192.168.1.63:{port}'
+        self.assertEqual(self.get('/', {'Host': address})[0], 403)
+        with patch.object(self.server, 'server_address', ('192.168.1.63', port)):
+            self.assertEqual(self.get('/', {'Host': address})[0], 200)
+            self.assertEqual(self.get('/profile-confirmation.js', {'Host': address})[0], 200)
+            self.assertEqual(self.get('/api/market?symbol=BAD', {'Host': address, 'Origin': f'http://{address}'})[0], 400)
+            self.assertEqual(self.get('/api/market?symbol=BAD', {'Host': address, 'Origin': 'https://example.org'})[0], 403)
+            self.assertEqual(self.get('/api/market?symbol=BAD', {'Host': address, 'Sec-Fetch-Site': 'cross-site'})[0], 403)
+            self.assertEqual(self.get('/', {'Host': f'192.168.1.64:{port}'})[0], 403)
+            self.assertEqual(self.get('/.env', {'Host': address})[0], 404)
+
+    def test_bind_host_allows_only_loopback_or_specific_private_ipv4(self):
+        import argparse
+        from server import bind_host
+        for address in ('127.0.0.1', '192.168.1.63', '10.0.0.5', '172.16.1.5'):
+            self.assertEqual(bind_host(address), address)
+        for address in ('0.0.0.0', '8.8.8.8', '::', 'localhost', '172.32.1.5'):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                bind_host(address)
+
+    def test_configured_https_origin_and_pages_cors_are_explicit(self):
+        self.server.public_origin = 'https://mac.example.test'
+        self.server.cors_origins = {'https://perryong.github.io'}
+        headers = {'Host': 'mac.example.test', 'Origin': 'https://perryong.github.io', 'Sec-Fetch-Site': 'cross-site'}
+        conn = http.client.HTTPConnection(*self.server.socket.getsockname(), timeout=4)
+        conn.request('GET', '/api/health', headers=headers)
+        response = conn.getresponse()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader('Access-Control-Allow-Origin'), 'https://perryong.github.io')
+        self.assertEqual(json.loads(response.read())['mode'], 'read-only')
+        conn.close()
+        self.assertEqual(self.get('/api/health', {**headers, 'Origin': 'https://evil.example'})[0], 403)
+        self.assertEqual(self.get('/api/health', {'Host': 'mac.example.test', 'Origin': 'https://mac.example.test'})[0], 200)
+        conn = http.client.HTTPConnection(*self.server.socket.getsockname(), timeout=4)
+        conn.request('OPTIONS', '/api/health', headers={**headers, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Private-Network': 'true'})
+        response = conn.getresponse()
+        self.assertEqual(response.status, 204)
+        self.assertEqual(response.getheader('Access-Control-Allow-Private-Network'), 'true')
+        response.read();conn.close()
+        self.assertEqual(self.get('/api/crypto?symbol=NOTALLOWED', headers)[0], 400)

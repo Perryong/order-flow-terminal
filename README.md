@@ -12,6 +12,21 @@ python3 server.py --port 8791
 
 [Intraday terminal](http://127.0.0.1:8791/) · [Crypto swing view](http://127.0.0.1:8791/swing.html) · [Mac alerts](#background-alerts-on-this-mac) · [Python research](#python-research) · [NinjaTrader 8](#ninjatrader-8) · [Project layout](#project-layout)
 
+## Open on a phone over the same Wi-Fi
+
+The default `127.0.0.1` address only works on the Mac. To use a phone, connect both devices to the same trusted local network and start an additional server bound to the Mac's Wi-Fi IP:
+
+```sh
+ipconfig getifaddr en0
+.venv/bin/python server.py --host 192.168.1.63 --port 8791
+```
+
+Replace `192.168.1.63` with the address returned by the first command, then open `http://192.168.1.63:8791/` on the phone. The Mac must remain awake and the server must remain running. The address may change when the Mac joins another network. This local-network listener can run alongside the existing localhost listener on the same port; each binds to its own address.
+
+This serves the terminal and its read-only market-data routes to devices that can reach that local address. It does not provide access over mobile data or a different Wi-Fi network. The server accepts only its configured host and retains the same-origin API checks and static-file allowlist. No router forwarding or firewall change is required by this setup. Guest Wi-Fi or client isolation can prevent devices from reaching each other.
+
+Each phone browser session collects its own live data and starts its own profile warm-up; it does not inherit the Mac browser's recording. Notifications remain disabled by default.
+
 ## Intraday order flow
 
 The intraday terminal offers 15-second, 1-minute, 5-minute, 15-minute, 30-minute and 1-hour bars for every instrument in live and replay sessions. A sweep can fire within a bar. Absorption and exhaustion use completed bars, so changing the interval can change those signals. For example, an ETHUSDT **long sweep** at the default threshold means aggressive buys totaling at least 100,000 USDT traded across at least four distinct footprint price rows within 300 milliseconds and finished above the first row. Check the signal time and watch whether buyers hold those prices or sellers push back through them.
@@ -202,3 +217,60 @@ Bar-close signals use NT's volumetric bid/ask classification. Sweep and iceberg 
 4. A market order can fill away from the marked signal price. A missing ATM status can leave the entry slot occupied. In that case inspect the account's position and orders, then restart the strategy once the instrument is flat and clear. Strategy Analyzer cannot replay ATM order handling. [ATM creation](https://static.ninjatrader.com/support/helpGuides/nt8/atmstrategycreate.htm) · [ATM position updates](https://static.ninjatrader.com/support/helpGuides/nt8/getatmstrategymarketposition.htm)
 
 The source passed a C# syntax parse on macOS. Compilation against NinjaTrader assemblies, chart rendering and Playback fills require Windows NinjaTrader Desktop and have not been verified here.
+
+## Volume profile overlay
+
+On the terminal's Heatmap or Footprint chart, **Volume profile** adds a blue horizontal histogram beside the price scale. **Range → 15 min / 30 min / 60 min** selects a rolling window independently of the candle interval; 30 minutes is the default. Uncheck Volume profile to hide it. The TPO tab retains its separate session-volume display.
+
+The profile sums received executions, including trades with an unknown aggressor side. Book orders, liquidations and XAU/USD price quotes do not contribute. Quantities are base-coin units for crypto and shares for equities/GLD; coverage is limited to the connected feed.
+
+- **POC** (red): midpoint of the price row with the most volume. Equal maxima choose the lower price row.
+- **VAH / VAL** (yellow): upper/lower row boundaries of the value area. Starting at POC, the calculation adds the higher-volume neighboring traded row until at least 70% of volume is included; equal neighbors choose the lower side. Blue bars are brighter inside this area.
+- The coverage strip gives the recorded interval and exact levels. **Partial history** means collection began inside the chosen window; **Feed gap** marks a recorded interruption. Unreported connection gaps can still leave missing trades. These are received-data profiles, not a claim of complete exchange history.
+
+Ranges use completed UTC seconds and refresh once per second; the current unfinished second appears on the next refresh. Live windows advance even when trades stop. Replay windows end at the replay cursor and never use future events. The rolling history survives the 200,000-event live segment rollover and candle/price-row changes, retaining at most the latest hour of second-by-price totals. Switching instruments or recordings resets it. After disconnecting, replay uses only the current recording segment; exported files likewise contain their own segment only.
+
+Heatmap scaling includes the profile's prices. Footprint keeps its readable row scale and displays the portion of the profile in view; the coverage strip still gives all three levels. These levels provide context for existing scanner setups. The overlay adds no entry/exit signals or notifications, and notifications remain off by default.
+
+## Profile-confirmed scanner setups
+
+The Setup scanner opens in **Profile confirmed** mode. Choose **All order flow** to see the original absorption, sweep, exhaustion and possible-iceberg detections. The profile range selector controls confirmation even when the overlay is hidden or TPO is selected.
+
+A confirmation requires all of the following:
+
+1. Complete received history for the selected **15, 30 or 60 minutes**, at least three traded price rows, and no recorded gap inside that profile. A partial profile remains visible but the confirmation scanner waits for it to fill.
+2. Provider-timed trades and a valid two-sided book no more than **1.5 seconds old**. Live backfill, disconnected feeds and receipt-only timestamps cannot produce live confirmations.
+3. An execution within **one price row** of POC, VAH or VAL. The scanner freezes the level, all three profile values, row size, range and test time. This test is valid for **60 seconds**, and is discarded if price moves more than **three rows** away.
+4. A subsequent matching directional scanner signal, no more than **five seconds old**, while the latest execution is at least **one row** above the frozen level for a long or below it for a short, and no farther than three rows away. Recorded 60-second buy-minus-sell delta must agree with the direction, with no unclassified quantity in that window.
+
+Cards show **Long/Short**, the tested level and price action (hold/reclaim/breakout/rejection/breakdown), the confirmation execution price, range, UTC confirmation time, order-flow trigger and recorded delta. Hover the details for the frozen POC/VAH/VAL and original trigger price/time. These are historical confirmations at the shown time, not continuously active entry instructions. A label describes the observed level test and move; it does not assert that a full retest or candle-close pattern completed. If multiple levels qualify, the closest frozen level is used. Repeated confirmations at the same level/direction are limited to one per minute.
+
+Replay calculates these rules using only data available at its cursor and labels results **Replay**. Live segment rollover preserves confirmation state. Switching instruments resets it. Changing the profile range or chart/settings configuration clears live confirmation history and starts fresh; replay recalculates from its recording. The received delta after such a reset initially covers only subsequent received trades. After a recorded connection gap, confirmation waits for a full selected window after trades resume; unreported upstream gaps cannot be detected.
+
+This feature adds display-only context to the scanner. It does not add order execution, notifications, automatic stops/targets or a tested win-rate estimate. Desktop and phone notifications remain off by default, and the disabled Mac watcher is not restarted.
+
+## GitHub Pages interface with a private Mac data server
+
+GitHub Pages hosts the static interface at `https://perryong.github.io/order-flow-terminal/`. Market data is served by the Mac through a private HTTPS Tailscale Serve endpoint configured in the repository variable `TAPESCOPE_API_ORIGIN`. The phone must have Tailscale connected to the same tailnet, even when using mobile data or another Wi-Fi network. The Mac must be awake, online and running the server. The public Pages site alone does not grant access to the private Mac endpoint.
+
+The GitHub Actions Pages workflow builds an allowlisted static artifact using `scripts/build_pages.py`; it excludes server code, provider credentials, watcher state and recordings. Relative links work under the repository path. `config.js` in the artifact contains only the HTTPS API origin. Local mode keeps its existing direct Binance connections; hosted mode receives Binance history, live executions, depth and liquidations from the Mac via `/api/crypto`. Aggregate trade IDs prevent history duplication after SSE reconnects. Each browser collects its own profile history.
+
+Start the server behind Tailscale with explicit origins (replace the example hostname with your Mac's Tailscale DNS name):
+
+```sh
+.venv/bin/python server.py --port 8791 \
+  --public-origin https://your-mac.your-tailnet.ts.net \
+  --allow-origin https://perryong.github.io
+tailscale serve --bg http://127.0.0.1:8791
+```
+
+Tailscale may first require you to enable Serve/HTTPS in its admin console. CORS allows the configured Pages origin only; the API retains Host checks and fixed market/static-file allowlists. The relay needs Node.js 22 or newer; set `TAPESCOPE_NODE` to its absolute executable path when starting from launchd. The Mac's `com.tapescope.server` LaunchAgent can keep the HTTP server running at login; this is separate from the disabled alert watcher. No router port forwarding, public Funnel or public tunnel is used.
+
+The market routes use the existing Moomoo quote permissions and spot provider configuration. `/api/health` verifies the read-only server. The Swing page still reads the existing swing collector's snapshot and labels stale/unavailable data; deploying Pages does not restart that disabled collector or enable any notifications.
+
+To deploy changes, push `main`; the **Deploy Tapescope Pages** workflow builds and deploys the site. A changed backend origin also needs a new workflow run. For a local artifact check, choose an empty directory:
+
+```sh
+python3 scripts/build_pages.py --output /tmp/tapescope-pages-check \
+  --api-origin https://your-mac.your-tailnet.ts.net
+```

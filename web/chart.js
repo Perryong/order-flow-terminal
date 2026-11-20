@@ -1,5 +1,5 @@
 // Each view is painted from the engine state at the replay cursor.
-function renderChart(canvas, e, view, offset = 0) {
+function renderChart(canvas, e, view, offset = 0, profile = null) {
   const W = canvas.clientWidth, H = canvas.clientHeight;
   const dpr = window.devicePixelRatio || 1;
   if (canvas.width !== Math.round(W*dpr) || canvas.height !== Math.round(H*dpr)) {
@@ -10,7 +10,8 @@ function renderChart(canvas, e, view, offset = 0) {
   ctx.fillStyle = '#0c131c'; ctx.fillRect(0,0,W,H);
   ctx.font = '10px Menlo, monospace'; ctx.textBaseline = 'middle';
   const ink = '#9cabb8', up = '#7de5c7', down = '#fd919d';
-  const width = W-76, top = 13, bottom = H-40, bucket=e.o.bucket;
+  const profileWidth=profile && view!=='tpo'?Math.min(165,Math.max(95,W*.2)):0;
+  const width = W-76-profileWidth, top = 13, bottom = H-40, bucket=e.o.bucket;
   const label = (value,x,y,color=ink,align='left') => {
     ctx.fillStyle=color; ctx.textAlign=align; ctx.fillText(value,x,y);
   };
@@ -52,6 +53,10 @@ function renderChart(canvas, e, view, offset = 0) {
     return [];
   }
   let low=Math.min(...bars.map(b=>b.l)), high=Math.max(...bars.map(b=>b.h));
+  if(profile?.rows.length && view!=='foot'){
+    low=Math.min(low,profile.rows[0].price);
+    high=Math.max(high,profile.rows.at(-1).price+bucket);
+  }
   const padding=Math.max(bucket*1.5,(high-low)*0.16);
   low-=padding; high+=padding;
   if(view==='foot'){
@@ -116,6 +121,38 @@ function renderChart(canvas, e, view, offset = 0) {
     for(let i=0;i<=5;i++)label(price(high-i*(high-low)/5),width+6,top+(bottom-top)*i/5);
   }
   ctx.fillStyle='#8bdeca';ctx.fillRect(width,y(last)-8,75,16);label(price(last),width+6,y(last),'#112723');
+  if(profileWidth){
+    const left=width+76,right=W-5;
+    ctx.fillStyle='#101d2a';ctx.fillRect(left,top,profileWidth,bottom-top);
+    ctx.save();ctx.beginPath();ctx.rect(left,top,profileWidth,bottom-top);ctx.clip();
+    // Merge subpixel rows for drawing only; POC/value area retain the configured price rows.
+    const pixels=new Map(),pixelHeight=Math.max(1,rowH-.5);
+    for(const r of profile.rows){
+      const py=Math.floor(y(r.price+bucket));
+      if(py>bottom || py+rowH<top)continue;
+      const entry=pixels.get(py)||{volume:0,value:false};
+      entry.volume+=r.volume;entry.value ||= r.price>=profile.val && r.price<profile.vah;pixels.set(py,entry);
+    }
+    const max=Math.max(1,...[...pixels.values()].map(r=>r.volume));
+    for(const [py,r] of pixels){
+      ctx.fillStyle=r.value?'#529dd1':'#31536d';
+      ctx.fillRect(left+3,py,(profileWidth-12)*r.volume/max,pixelHeight);
+    }
+    ctx.restore();
+    const levels=[['POC',profile.poc,'#ff929c'],['VAH',profile.vah,'#f2d282'],['VAL',profile.val,'#f2d282']];
+    for(const [,p,c] of levels){
+      if(p===null || y(p)<top || y(p)>bottom)continue;
+      ctx.setLineDash([5,4]);line(0,y(p),width,y(p),c);ctx.setLineDash([]);
+      line(left,y(p),right,y(p),c);
+    }
+    let labelY=top-14;
+    for(const [name,p,c] of levels.filter(([,p])=>p!==null && y(p)>=top && y(p)<=bottom).sort((a,b)=>b[1]-a[1])){
+      labelY=Math.max(labelY+14,Math.min(bottom-7,y(p)));
+      ctx.fillStyle='#101d2aeb';ctx.fillRect(left+3,labelY-7,profileWidth-6,14);
+      label(name+' '+price(p),left+5,labelY,c);
+    }
+    label('Volume',left+5,H-10);
+  }
   const maxVol=Math.max(...bars.map(b=>b.vol),1);
   bars.forEach((b,i)=>{
     const h=12*b.vol/maxVol;ctx.fillStyle=b.delta>=0?'#50988c':'#ae6d7e';ctx.fillRect(i*step+1,H-21-h,Math.max(1,step-2),h);

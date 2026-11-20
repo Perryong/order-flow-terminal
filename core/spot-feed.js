@@ -26,7 +26,7 @@ function openSpotFeed(onQuote, onStatus) {
 
   async function poll() {
     try {
-      const response = await fetch('/api/spot', {signal: controller.signal, cache: 'no-store'});
+      const response = await fetch(typeof TapescopeBackend==='undefined'?'/api/spot':TapescopeBackend.url('/api/spot'), {signal: controller.signal, cache: 'no-store'});
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(typeof body.error === 'string' ? body.error : 'HTTP ' + response.status);

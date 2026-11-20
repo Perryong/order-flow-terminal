@@ -5,14 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0b1016">
 <title>Swing trading · Tapescope</title>
-<link rel="stylesheet" href="/terminal.css">
-<link rel="stylesheet" href="/swing.css">
-<script src="/swing-view.js" defer></script>
+<link rel="stylesheet" href="terminal.css">
+<link rel="stylesheet" href="swing.css">
+<script src="config.js"></script><script src="backend.js"></script>
+<script src="swing-view.js" defer></script>
 </head>
 <body>
 <header class="mast">
   <div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Tapescope</div>
-  <nav class="nav" aria-label="Views"><a href="/">Terminal</a><a href="/swing.html" class="selected" aria-current="page">Swing trading</a></nav>
+  <nav class="nav" aria-label="Views"><a href="./">Terminal</a><a href="swing.html" class="selected" aria-current="page">Swing trading</a></nav>
   <span class="mast-end">Alerts only</span>
 </header>
 <main class="swing-main">
@@ -27,7 +28,7 @@
       <div class="swing-panel-head"><h2 id="dailyHeading">BTCUSDT daily chart</h2><span id="trend" class="trend">Awaiting candles</span></div>
       <div class="daily-price"><div><div class="swing-label">Last trade · USDT</div><strong id="lastPrice">—</strong></div><span id="lastTradeTime"></span></div>
       <div class="daily-plot"><canvas id="dailyChart" role="img" aria-label="Daily candlesticks and key levels"></canvas><span id="chartEmpty">Waiting for daily candles</span></div>
-      <div class="daily-meta"><span id="dailyTime">Daily close unavailable</span><a id="terminalLink" href="/?market=BTCUSDT">Open order flow ↗</a></div>
+      <div class="daily-meta"><span id="dailyTime">Daily close unavailable</span><a id="terminalLink" href="./?market=BTCUSDT">Open order flow ↗</a></div>
     </section>
     <section class="panel swing-levels" aria-labelledby="levelsHeading">
       <div class="swing-panel-head"><h2 id="levelsHeading">Daily levels</h2><span class="unit">USDT</span></div>

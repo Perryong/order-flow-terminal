@@ -7,7 +7,7 @@
 </head>
 <body>
 <header class="mast"><div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Tapescope</div>
-<div class="nav"><a href="#terminal" class="selected">Terminal</a><a href="/swing.html">Swing</a><button id="tools">Research tools</button></div>
+<div class="nav"><a href="#terminal" class="selected">Terminal</a><a href="swing.html">Swing</a><button id="tools">Research tools</button></div>
 <div class="mast-end"><span class="paper-dot"></span> Paper workspace <button class="icon" id="settings" aria-label="Configure terminal" title="Configure terminal">⚙</button></div></header>
 <main id="terminal">
 <div class="page-title"><div><h1>Order flow terminal</h1></div>
@@ -33,10 +33,12 @@
 <section class="panel chart-panel">
 <div class="panel-head"><div class="heading"><span class="chart-mark" aria-hidden="true">▥</span><h2>Order flow chart</h2></div><span class="pill" id="modeBadge">Connecting</span></div>
 <div class="chart-toolbar"><div class="tabs" aria-label="Chart view"><button data-view="heat" aria-pressed="true">Heatmap</button><button data-view="foot" aria-pressed="false">Footprint</button><button data-view="tpo" aria-pressed="false">TPO profile</button></div>
-<select id="timeframe" aria-label="Bar interval">
+<label class="interval-control">Candles <select id="timeframe" aria-label="Bar interval">
 <option value="15000">15 sec</option><option value="60000" selected>1 min</option><option value="300000">5 min</option>
 <option value="900000">15 min</option><option value="1800000">30 min</option><option value="3600000">1 hour</option>
-</select></div>
+</select></label></div>
+<div class="profile-toolbar"><label class="profile-toggle"><input id="profileOn" type="checkbox" checked>Volume profile</label><label>Range <select id="profileRange" aria-label="Volume profile range"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">60 min</option></select></label><span>POC · 70% value area</span></div>
+<div id="profileReadout" class="profile-readout"></div>
 <div class="plot"><canvas id="chart" aria-label="Order flow price and volume chart"></canvas><div id="hover" hidden></div></div>
 <div class="legend" id="legend"></div>
 <div class="transport"><button id="play" aria-label="Play replay" title="Play replay">▶</button><button id="restart" aria-label="Restart replay" title="Restart replay">↺</button>
@@ -44,7 +46,7 @@
 <select id="speed" aria-label="Replay speed"><option value="1">1×</option><option value="5">5×</option><option value="20" selected>20×</option><option value="100">100×</option></select></div>
 </section>
 <section class="panel scanner"><div class="panel-head"><div class="heading"><span class="radar"></span><h2>Setup scanner</h2></div><span class="count" id="signalCount">0</span></div>
-<div class="subline">Detected setups <span>TIME · UTC</span></div><div id="signals" class="scroll-list"></div></section>
+<div class="subline scanner-controls"><select id="scannerMode" aria-label="Scanner confirmation filter"><option value="profile">Profile confirmed</option><option value="all">All order flow</option></select><span>TIME · UTC</span></div><div id="scannerStatus" class="scanner-status"></div><div id="signals" class="scroll-list"></div></section>
 <section class="panel tape"><div class="panel-head"><div class="tabs wide"><button data-list="prints" aria-pressed="true">Large trades</button><button data-list="liqs" aria-pressed="false">Liquidations</button><button data-list="paper" aria-pressed="false">Paper trades</button></div><span class="count" id="tapeCount">0</span></div>
 <div class="table-scroll"><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div></section>
 <section class="panel book"><div class="panel-head"><div class="heading"><span class="book-mark">≋</span><h2>Order book</h2></div><span class="count">L2</span></div>
@@ -61,5 +63,5 @@
 <label>Fee per side (%)<input id="fee" type="number" min="0" max="5" step="any" value="0.05" required></label></fieldset>
 <small>Applying settings recalculates the session through the current cursor.</small><button class="primary">Apply settings</button></form></dialog>
 <dialog id="toolsDialog"><div class="dialog-head"><h2>Research tools</h2><button class="close" aria-label="Close research tools">×</button></div><div class="dialog-body"><h3>Python tick analysis</h3><p>Export ticks from Session files and run the report to inspect footprint bubbles, volume and time at price.</p><a href="README.md#:~:text=%23%23%20Python%20research" target="_blank">Open Python instructions ↗</a><a href="research/orderflow_report.py" download>Download report script ↓</a><a href="research/report.html" download>Download its HTML template ↓</a><h3>NinjaTrader 8</h3><p>Set up a volumetric chart and apply the strategy with your own ATM stop and target.</p><a href="README.md#:~:text=%23%23%20NinjaTrader%208" target="_blank">Open NinjaTrader setup ↗</a><a href="ninjatrader/Strategies/OrderFlowSetupAtm.cs" download>Download NinjaScript strategy ↓</a></div></dialog>
-<script src="engine.js"></script><script src="session.js"></script><script src="chart.js"></script><script src="live-feed.js"></script><script src="markets.js"></script><script src="spot-feed.js"></script><script src="terminal.js"></script>
+<script src="config.js"></script><script src="backend.js"></script><script src="engine.js"></script><script src="session.js"></script><script src="volume-profile.js"></script><script src="chart.js"></script><script src="live-feed.js"></script><script src="profile-confirmation.js"></script><script src="markets.js"></script><script src="spot-feed.js"></script><script src="terminal.js"></script>
 </body></html>

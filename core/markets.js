@@ -58,3 +58,43 @@ function openVenueStream(symbol, receive, status, origin='') {
 }
 
 if (typeof module !== 'undefined') module.exports = {openVenueStream};
+
+// Hosted Pages mode: the Mac relays Binance history, trades and depth over HTTPS SSE.
+function openCryptoStream(symbol,receive,status,origin=''){
+  const channel={state:'Connecting',exchangeTime:0},depth={state:'Connecting',exchangeTime:0};
+  const es=new EventSource(origin+'/api/crypto?symbol='+encodeURIComponent(symbol));
+  const reset=state=>{channel.state=depth.state=state;channel.exchangeTime=depth.exchangeTime=0;};
+  let interrupted=false,lastTradeId=null,lastDepthId=null;
+  es.onmessage=({data})=>{
+    const ev=JSON.parse(data);
+    if(ev.symbol && ev.symbol!==symbol)return;
+    if(ev.type==='status'){
+      if(ev.state==='error'){reset('Unavailable');status(ev.message||'Mac feed unavailable');es.close();}
+      else if(ev.state==='live')status('');
+      else status(ev.message||'Connecting to Mac data server');
+      return;
+    }
+    if(ev.type==='gap'){reset('Reconnecting');receive(ev);return;}
+    if(!['trade','depth','liquidation'].includes(ev.type))return;
+    if(ev.type==='trade'){
+      if(!Number.isSafeInteger(ev.tradeId) || lastTradeId!==null && ev.tradeId<=lastTradeId)return;
+      lastTradeId=ev.tradeId;
+    }
+    if(ev.type==='depth' && Number.isSafeInteger(ev.updateId)){
+      if(lastDepthId!==null && ev.updateId<=lastDepthId)return;
+      lastDepthId=ev.updateId;
+    }
+    if(!ev.historical && (ev.type==='trade'||ev.type==='depth')){
+      const health=ev.type==='trade'?channel:depth;health.state='Open';health.exchangeTime=ev.t;
+      interrupted=false;status('');
+    }
+    receive(ev);
+  };
+  es.onerror=()=>{
+    reset('Reconnecting');
+    if(!interrupted){receive({type:'gap',t:Date.now()});interrupted=true;}
+    status('Mac data server unavailable. Keep the Mac awake and connect this device to Tailscale.');
+  };
+  return {channel,depth,close:()=>es.close()};
+}
+if(typeof module!=='undefined')module.exports.openCryptoStream=openCryptoStream;

@@ -8,6 +8,7 @@ const asOf = t => new Date(t).toISOString().replace('T',' ').slice(0,19)+' UTC';
 let venueStream,spotFeed,referenceTimer,referenceQuote,referenceStatus='',spotQuote,spotStatus='',venueStatus='';
 const setupTypes=['absorption','sweep','exhaustion','iceberg'];
 const cfg={barMs:60000,bucket:0,bigUsd:100000,usd:1000,stopPct:.2,targetPct:.4,feePct:.05,on:false,types:setupTypes,topic:'',desktop:false,symbol:'BTCUSDT'};
+let volumeProfile=createVolumeProfile(), profileMinutes=30, profileScanner=createProfileScanner();
 let data, engine, index=0, cursor=0, source='', running=false, generation=0;
 let view='heat', tape='prints', latestBook=null, firstPrice=null, tradeCount=0, offset=0, hits=[], dirty=true;
 let tradesChannel, depthChannel, minute, previousSegment, lastTradeId, lastDepthId, previousDraw=0, previousFrame=0;
@@ -15,7 +16,8 @@ let tradesChannel, depthChannel, minute, previousSegment, lastTradeId, lastDepth
 function notice(message=''){
   $('notice').textContent=message;$('notice').hidden=!message;
 }
-function clearEngine(){
+function clearEngine(keepProfile=false){
+  if(!keepProfile){volumeProfile=createVolumeProfile();profileScanner=createProfileScanner();}
   engine=createEngine({barMs:cfg.barMs,market:data.market,bucket:cfg.bucket || data.rowSize || listedMarket(data.market)?.row || (source==='Demo replay'?10:0),bigUsd:cfg.bigUsd});
   if(cfg.barMs>=15*60000)engine.tpoMs=cfg.barMs;
   spotQuote=null;
@@ -30,17 +32,25 @@ function stopFeed(){
   tradesChannel = depthChannel = null;
   running=false;
 }
-function applyEvent(ev,alertLive=false){
+function applyEvent(ev,alertLive=false,trackProfile=true){
+  if(trackProfile){
+    if(ev.type==='trade')volumeProfile.trade(ev.exchangeTime ?? ev.t,ev.price,ev.qty);
+    if(ev.type==='gap')volumeProfile.gap(ev.exchangeTime ?? ev.t);
+  }
   if(ev.type==='spot') {spotQuote=ev;return;}
   if(ev.type==='gap')latestBook=null;
   if(ev.type==='trade'){if(firstPrice===null)firstPrice=ev.price;tradeCount++;minute.trade(ev.exchangeTime ?? ev.t,ev.qty,ev.sell);}
   if(ev.type==='depth')latestBook=ev;
   const signals=FlowSession.apply(engine,ev);
+  if(trackProfile && engine.o.bucket>0){
+    const time=ev.exchangeTime??ev.t;
+    profileScanner.process(ev,{profile:volumeProfile.read(time,profileMinutes,engine.o.bucket),minutes:profileMinutes,signals,live:source==='Live feed',fresh:alertLive && streamState(tradesChannel)==='Live' && streamState(depthChannel)==='Live',now:Date.now()});
+  }
   if(alertLive)for(const s of signals)sendAlert(s);
 }
-function advance(t){
+function advance(t,trackProfile=true){
   cursor=t;
-  while(index<data.events.length && data.events[index].t<=t)applyEvent(data.events[index++]);
+  while(index<data.events.length && data.events[index].t<=t)applyEvent(data.events[index++],false,trackProfile);
   dirty=true;
 }
 function seek(t){
@@ -66,7 +76,7 @@ function ingest(ev){
   if (data.events.length >= 200000) {
     previousSegment = {...data,rowSize:engine.o.bucket};
     data = {...data,events:[]};
-    clearEngine();
+    clearEngine(true);
     notice('New live segment. The preceding 200,000 events are available in Session files.');
     $('previousSession').hidden = false;
   }
@@ -79,7 +89,8 @@ function ingest(ev){
   applyEvent(ev,current);index++;dirty=true;
 }
 function freezeLive(){
-  stopFeed();source=data.events.length?'Recorded replay':'Disconnected';dirty=true;
+  stopFeed();source=data.events.length?'Recorded replay':'Disconnected';
+  const t=cursor;clearEngine();advance(t);dirty=true;
 }
 // Load the most recent aggregate trades so bars and setups exist as soon as the feed opens.
 // shortcut: trades printed between this fetch and the socket opening are missed, and depth has no history
@@ -108,11 +119,20 @@ async function connect(){
     return;
   }
   render();
+  if(TapescopeBackend.origin){startRemoteCrypto(token);return;}
   try{await backfill(data.symbol,token);}catch{notice('Recent trade history is unavailable. The session starts from connection.');}
   if(token!==generation)return;
   render();
   const symbol=data.symbol.toLowerCase(), base='wss://fstream.binance.com';
-  const changed=()=>{dirty=true;};
+  let interrupted=false;
+  const changed=()=>{
+    const channels=[tradesChannel,depthChannel];
+    if(!interrupted && lastTradeId!==null && channels.some(ch=>['Unavailable','Reconnecting'].includes(ch?.state))){
+      interrupted=true;ingest({type:'gap',t:Date.now()});
+    }
+    if(channels.every(ch=>ch?.state==='Open'))interrupted=false;
+    dirty=true;
+  };
   tradesChannel=openMarketChannel(base+'/market/stream?streams='+symbol+'@aggTrade/'+symbol+'@forceOrder',(d,ch)=>{
     if(token!==generation || d.s!==data.symbol && d.o?.s!==data.symbol)return;
     if(d.e==='aggTrade' && (lastTradeId===null || d.a>lastTradeId)){
@@ -132,12 +152,19 @@ async function connect(){
     ingest({type:'depth',t:d.T,bids,asks});
   },changed);
 }
+function startRemoteCrypto(token){
+  venueStream=openCryptoStream(data.symbol,ev=>{
+    if(generation!==token)return;
+    ingest(ev);
+  },message=>{if(generation===token){venueStatus=message;notice(message);dirty=true;}},TapescopeBackend.origin);
+  tradesChannel=venueStream.channel;depthChannel=venueStream.depth;
+}
 function startListedFeed(token){
   const symbol=data.symbol;
   const current=()=>generation===token;
   async function fetchReference(){
     try{
-      const r=await fetch('/api/reference?symbol='+symbol,{cache:'no-store'});
+      const r=await fetch(TapescopeBackend.url('/api/reference?symbol='+symbol),{cache:'no-store'});
       if(!r.ok)throw Error();
       const q=await r.json();
       if(!current() || q.symbol!==symbol)return;
@@ -154,7 +181,7 @@ function startListedFeed(token){
     if(ev.type==='gap' && !tradeCount && !latestBook)return;
     if(ev.type==='trade'||ev.type==='depth')venueStatus='';
     ingest(ev);
-  },message=>{if(current()){venueStatus=message;dirty=true;}});
+  },message=>{if(current()){venueStatus=message;dirty=true;}},TapescopeBackend.origin);
   tradesChannel=venueStream.channel;depthChannel=venueStream.depth;
 }
 function renderMarketQuotes(live){
@@ -191,15 +218,30 @@ function el(tag,txt,cls){
 }
 function empty(node,message){node.append(el('div',message,'empty'));}
 function showSignals(){
-  const list=$('signals');list.replaceChildren();$('signalCount').textContent=engine.signals.length;
+  const list=$('signals');list.replaceChildren();
+  const confirmed=$('scannerMode').value==='profile';
+  const rows=confirmed?profileScanner.confirmed:engine.signals;
+  $('signalCount').textContent=rows.length;
+  const now=source==='Live feed'?Date.now():cursor;
+  const profile=engine.o.bucket>0?volumeProfile.read(now,profileMinutes,engine.o.bucket):null;
+  const fresh=source!=='Live feed' || streamState(tradesChannel)==='Live' && streamState(depthChannel)==='Live';
+  const status=profileScanner.status(now,profile,profileMinutes,fresh);
+  $('scannerStatus').textContent=confirmed?(source==='Live feed'?'':'Replay · ')+status:'All order-flow detections · profile confirmation not required';
+  $('scannerStatus').title='Confirmations require complete profile history, a recent level test, fresh trades/depth, a matching scanner trigger and aligned recorded 60-second delta.';
   const icons={absorption:'⊣',sweep:'↗',exhaustion:'≈',iceberg:'◇'};
-  for(const s of engine.signals.slice(-45).reverse()){
+  for(const s of rows.slice(-45).reverse()){
     const row=el('div',undefined,'signal'),info=el('div');
-    const glyph=s.type==='sweep'&&s.dir<0?'↘':icons[s.type];
+    const type=confirmed?s.flow.type:s.type;
+    const glyph=type==='sweep'&&s.dir<0?'↘':icons[type];
     row.append(el('span',glyph,'glyph '+(s.dir<0?'dn':'')));
-    info.append(el('strong',s.type==='iceberg'?'Possible iceberg':s.type),el('small',(s.dir>0?'Long':'Short')+' · '+number(s.price)),el('small',s.note));
+    if(confirmed){
+      info.append(el('strong',(s.dir>0?'Long':'Short')+' · '+s.level+' '+s.action),el('small','Confirmed @ '+quote(s.price)),el('small',s.level+' '+quote(s.levelPrice)+' · '+s.range+' min · '+s.mode),el('small',type+' · '+s.flow.note),el('small','Recorded Δ60 '+signed(s.delta)));
+      info.title='Frozen at level test '+shortTime(s.touchTime)+' UTC · POC '+quote(s.levels.poc)+' · VAH '+quote(s.levels.vah)+' · VAL '+quote(s.levels.val)+' · Flow trigger '+shortTime(s.flow.t)+' @ '+quote(s.flow.price);
+      row.classList.add('profile-confirmed');
+    }else info.append(el('strong',s.type==='iceberg'?'Possible iceberg':s.type),el('small',(s.dir>0?'Long':'Short')+' · '+number(s.price)),el('small',s.note));
     row.append(info,el('time',shortTime(s.t)));list.append(row);
   }
+  if(confirmed && !list.children.length){empty(list,'No profile-confirmed setups yet. '+status);return;}
   if(!list.children.length)empty(list,source==='Live feed' && listedMarket(data.market) && venueStatus?venueStatus:'Waiting for a qualifying setup.');
 }
 function showBook(){
@@ -248,7 +290,21 @@ const legends={
   get tpo(){return [['#439b91',engine.tpoMs/60000+'-minute TPO visits'],['#5276a6','Session volume profile']];}
 };
 function drawChart(){
-  hits=renderChart($('chart'),engine,view,offset);
+  const enabled=$('profileOn').checked && view!=='tpo';
+  $('profileRange').disabled=false;
+  $('profileReadout').hidden=!enabled;
+  const profile=enabled && engine.o.bucket>0 ? volumeProfile.read(source==='Live feed'?Date.now():cursor,profileMinutes,engine.o.bucket) : null;
+  if(enabled){
+    const levels=profile?.total ? 'POC '+quote(profile.poc)+' · VAH '+quote(profile.vah)+' · VAL '+quote(profile.val) : 'Waiting for trades in this range';
+    const coverage=profile?.total ? ' · Recorded '+shortTime(profile.coverageStart)+'–'+shortTime(profile.end)+' UTC'+(profile.partial?' · Partial history':'')+(profile.hasGap?' · Feed gap':'') : '';
+    $('profileReadout').textContent='Volume profile · '+profileMinutes+' min · '+levels+coverage;
+    $('profileReadout').title='Executed volume by price. Value area contains at least 70%. Completed-second windows; only received trades are included.';
+  }
+  hits=renderChart($('chart'),engine,view,offset,profile);
+}
+function rebuildChart(){
+  const t=cursor,keepProfile=source==='Live feed';
+  clearEngine(keepProfile);advance(t,!keepProfile);if(keepProfile)profileScanner=createProfileScanner();render();
 }
 function render(){
   const live=source==='Live feed', active=engine.vol>0;
@@ -315,10 +371,16 @@ $('config').onsubmit=async ev=>{
   cfg.topic=$('topic').value.trim();cfg.desktop=$('notify').checked;
   $('settingsDialog').close();
   if(source==='Live feed' && data.symbol!==cfg.symbol){freezeLive();notice('Current recording stopped. Save the session, then connect to '+cfg.symbol+'.');}
-  const saved=cursor;clearEngine();advance(saved);render();
+  rebuildChart();
   if(cfg.desktop && (!('Notification' in window) || await Notification.requestPermission()!=='granted')){cfg.desktop=false;$('notify').checked=false;notice('Desktop notification permission is unavailable.');}
 };
-$('timeframe').onchange=()=>{cfg.barMs=+$('timeframe').value;const t=cursor;clearEngine();advance(t);render();};
+$('timeframe').onchange=()=>{cfg.barMs=+$('timeframe').value;rebuildChart();};
+$('profileRange').onchange=()=>{
+  profileMinutes=+$('profileRange').value;
+  if(source==='Live feed'){profileScanner=createProfileScanner();render();}else rebuildChart();
+};
+$('scannerMode').onchange=showSignals;
+$('profileOn').onchange=drawChart;
 $('connect').onclick=()=>{if(source==='Live feed'){freezeLive();render();}else connect();};
 $('play').onclick=()=>{
   if(!running&&index===data.events.length){clearEngine();advance(data.events[0].t);}
